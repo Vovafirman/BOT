@@ -59,3 +59,14 @@ def get_user_orders_by_id(order_id):
             "paid": bool(row[5])
         }
     return None
+
+# ===== ОБНОВИТЬ СТАТУС ОПЛАТЫ =====
+def set_order_paid(order_id, paid: bool):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        "UPDATE orders SET paid = ? WHERE id = ?",
+        (int(paid), order_id),
+    )
+    conn.commit()
+    conn.close()
