@@ -23,6 +23,7 @@ class OrderFSM(StatesGroup):
 
 products = {
     # Названия файлов должны совпадать с изображениями в папке images
+    # ===== ФУТБОЛКИ "ЦЕНТР КИНО" =====
     "cinema_1": ("Оригинал", "Фото 1.png"),
     "cinema_2": ("Режиссер", "Фото 2.png"),
     "cinema_3": ("Сценарий", "Фото 3.jpg"),
@@ -30,22 +31,29 @@ products = {
     "cinema_5": ("Даже в эпизоде есть смысл", "Фото 5.jpg"),
     "cinema_6": ("После титров", "Фото 6.png"),
     "cinema_7": ("Комедия", "Фото 7.jpg"),
-    "mech_1": ("Киномеханик", "Фото 8.jpg"),
-    "mech_2": ("Кино внутри", "Фото 9.jpg"),
-    "mech_3": ("Свет в проекции", "Фото 10.jpg"),
-    "mech_4": ("Бобина не лопни", "Фото 11.jpg"),
-    "mech_5": ("Тёмный зал", "Фото 12.jpg"),
-    "mech_6": ("16 мм жив", "Фото 13.jpg"),
-    "mech_7": ("Держу плёнку", "Фото 14.png"),
-    "board_game": ("Настольная игра Киношлёп", "Фото 15.png"),
+
+    # ===== ФУТБОЛКИ "КИНОМЕХАНКИ" =====
+    "mech_1": ("Смотрящий за проектором", "Фото 8.jpg"),
+    "mech_2": ("Не так страшен фильм", "Фото 9.jpg"),
+    "mech_3": ("А кино будет?", "Фото 10.jpg"),
+    "mech_4": ("А где ключ?", "Фото 11.jpg"),
+    "mech_5": ("Киномеханик", "Фото 12.jpg"),
+    "mech_6": ("Подписал ЭДО?", "Фото 13.jpg"),
+
+    # ===== НАСТОЛЬНАЯ ИГРА =====
+    "board_game": ("Снимим, если сможешь", "Фото 14.png"),
 }
 
 
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
     kb = InlineKeyboardBuilder()
-    kb.button(text="🛍 Открыть магазин", callback_data="open_shop")
-    await message.answer("<b>САЛАМ, БРАТ!</b>\nТы в ЦЕНТРЕ КИНО МЕРЧ. Нажимай кнопку:", reply_markup=kb.as_markup())
+    kb.button(text="Открыть магазин", callback_data="open_shop")
+    kb.adjust(1)
+    await message.answer(
+        "Уважаемые пользователи, рады приветсовать Вас в нашем магазине мерча от компании Центр Кино",
+        reply_markup=kb.as_markup(),
+    )
 
 
 @dp.callback_query(F.data == "open_shop")
@@ -77,13 +85,26 @@ async def show_catalog(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.in_(["cinema", "mech"]))
 async def show_category(callback: CallbackQuery):
     prefix = callback.data
-    kb = InlineKeyboardBuilder()
-    for key, (name, _) in products.items():
-        if key.startswith(prefix):
-            kb.button(text=name, callback_data=f"product_{key}")
-    kb.button(text="↩ Назад", callback_data="catalog")
-    kb.adjust(1)
-    await callback.message.answer("Выбери товар:", reply_markup=kb.as_markup())
+    title = "Футболки \"Центр Кино\"" if prefix == "cinema" else "Футболки \"Киномеханки\""
+
+    await callback.message.answer(f"<b>{title}</b>")
+
+    for key, (name, photo) in products.items():
+        if not key.startswith(prefix):
+            continue
+        kb_item = InlineKeyboardBuilder()
+        kb_item.button(text=f"Выбрать", callback_data=f"product_{key}")
+        kb_item.adjust(1)
+        try:
+            photo_file = FSInputFile(f"images/{photo}")
+            await callback.message.answer_photo(photo_file, caption=name, reply_markup=kb_item.as_markup())
+        except FileNotFoundError:
+            await callback.message.answer(name, reply_markup=kb_item.as_markup())
+
+    kb_back = InlineKeyboardBuilder()
+    kb_back.button(text="↩ Назад", callback_data="catalog")
+    kb_back.adjust(1)
+    await callback.message.answer("Выбери товар:", reply_markup=kb_back.as_markup())
     await callback.answer()
 
 
@@ -118,7 +139,9 @@ async def choose_product(callback: CallbackQuery, state: FSMContext):
 async def select_color(callback: CallbackQuery, state: FSMContext):
     color = "Молочный" if "milk" in callback.data else "Чёрный"
     await state.update_data(color=color)
-    await callback.message.answer("✍️ Введи адрес доставки (ФИО, город, улица, дом, индекс):")
+    await callback.message.answer(
+        "Напишите адрес доставки:\nФИО\nГород проживания\nАдрес доставки\nИндекс\nНомер телефона"
+    )
     await state.set_state(OrderFSM.address)
     await callback.answer()
 
@@ -128,12 +151,23 @@ async def input_address(message: Message, state: FSMContext):
     await state.update_data(address=message.text)
     data = await state.get_data()
 
-    text = f"<b>Подтверждение заказа:</b>\n\n🧢 {data['product_name']} ({data['color']})\n📦 Адрес: {data['address']}\n💵 Цена: 2 250 ₽"
+    text = (
+        f"<b>Подтверждение заказа:</b>\n\n"
+        f"🧢 {data['product_name']} ({data['color']})\n"
+        f"📦 Адрес: {data['address']}\n"
+        f"💵 Цена: 2 250 ₽"
+    )
     kb = InlineKeyboardBuilder()
-    kb.button(text="✅ Подтвердить заказ", callback_data="confirm_order")
+    kb.button(text="Подтверждаю", callback_data="confirm_order")
     kb.button(text="↩ Отмена", callback_data="catalog")
     kb.adjust(1)
-    await message.answer(text, reply_markup=kb.as_markup())
+
+    name, photo = products[data['product_code']]
+    try:
+        photo_file = FSInputFile(f"images/{photo}")
+        await message.answer_photo(photo_file, caption=text, reply_markup=kb.as_markup())
+    except FileNotFoundError:
+        await message.answer(text, reply_markup=kb.as_markup())
 
 
 @dp.callback_query(F.data == "confirm_order")
@@ -199,17 +233,26 @@ async def show_board_game(callback: CallbackQuery):
     name, photo = products["board_game"]
     photo_file = FSInputFile(f"images/{photo}")
     kb = InlineKeyboardBuilder()
-    kb.button(text="🛒 Заказать у @PRdemon", url="https://t.me/PRdemon")
+    kb.button(text="Купить", url="https://vk.com/center.kino.merch?from=groups")
     kb.button(text="↩ Назад", callback_data="catalog")
     kb.adjust(1)
-    await callback.message.answer_photo(photo=photo_file, caption=f"<b>{name}</b>\nНастольная игра по теме кино. Весело, стильно, уникально!", reply_markup=kb.as_markup())
+    caption = (
+        f"<b>{name}</b>\n"
+        "Возрастные ограничения: 12+ лет\n"
+        "Классификация: Развлекательная / Стратегия\n"
+        "Количество игроков: от 3-ех до 6 человек\n"
+        "Цена: 3.500 рублей\n\n"
+        "Возможно вы будущий продюсер?! А может ваши друзья?!\n"
+        "Кто сможет первый снять 3 фильма?!"
+    )
+    await callback.message.answer_photo(photo=photo_file, caption=caption, reply_markup=kb.as_markup())
     await callback.answer()
 
 
 @dp.callback_query(F.data == "game")
 async def play_game(callback: CallbackQuery):
     kb = InlineKeyboardBuilder()
-    kb.button(text="▶ Играть в 'Киношлёп'", url="https://t.me/CinemaGameBot")
+    kb.button(text="▶ Играть в 'Киношлёп'", url="https://center-kino.github.io/game_kinoshlep/")
     kb.button(text="↩ Назад", callback_data="open_shop")
     kb.adjust(1)
     await callback.message.answer("🎮 Игра 'Киношлёп':", reply_markup=kb.as_markup())
